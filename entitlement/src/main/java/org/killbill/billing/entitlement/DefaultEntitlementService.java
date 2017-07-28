@@ -1,7 +1,7 @@
 /*
  * Copyright 2010-2013 Ning, Inc.
- * Copyright 2014-2016 Groupon, Inc
- * Copyright 2014-2016 The Billing Project, LLC
+ * Copyright 2014-2017 Groupon, Inc
+ * Copyright 2014-2017 The Billing Project, LLC
  *
  * The Billing Project licenses this file to you under the Apache License, version 2.0
  * (the "License"); you may not use this file except in compliance with the
@@ -43,6 +43,9 @@ import org.killbill.billing.util.callcontext.CallOrigin;
 import org.killbill.billing.util.callcontext.InternalCallContextFactory;
 import org.killbill.billing.util.callcontext.TenantContext;
 import org.killbill.billing.util.callcontext.UserType;
+import org.killbill.billing.util.listener.RetryException;
+import org.killbill.billing.util.listener.RetryableHandler;
+import org.killbill.billing.util.listener.RetryableService;
 import org.killbill.bus.api.BusEvent;
 import org.killbill.bus.api.PersistentBus;
 import org.killbill.bus.api.PersistentBus.EventBusException;
@@ -58,7 +61,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 
-public class DefaultEntitlementService implements EntitlementService {
+public class DefaultEntitlementService extends RetryableService implements EntitlementService {
 
     public static final String NOTIFICATION_QUEUE_NAME = "entitlement-events";
 
@@ -80,6 +83,7 @@ public class DefaultEntitlementService implements EntitlementService {
                                      final NotificationQueueService notificationQueueService,
                                      final EntitlementUtils entitlementUtils,
                                      final InternalCallContextFactory internalCallContextFactory) {
+        super(notificationQueueService, internalCallContextFactory);
         this.entitlementInternalApi = entitlementInternalApi;
         this.blockingStateDao = blockingStateDao;
         this.eventBus = eventBus;
@@ -95,59 +99,59 @@ public class DefaultEntitlementService implements EntitlementService {
 
     @LifecycleHandlerType(LifecycleLevel.INIT_SERVICE)
     public void initialize() {
-        try {
-            final NotificationQueueHandler queueHandler = new NotificationQueueHandler() {
-                @Override
-                public void handleReadyNotification(final NotificationEvent inputKey, final DateTime eventDateTime, final UUID fromNotificationQueueUserToken, final Long accountRecordId, final Long tenantRecordId) {
-                    final InternalCallContext internalCallContext = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "EntitlementQueue", CallOrigin.INTERNAL, UserType.SYSTEM, fromNotificationQueueUserToken);
+        final NotificationQueueHandler queueHandler = new NotificationQueueHandler() {
+            @Override
+            public void handleReadyNotification(final NotificationEvent inputKey, final DateTime eventDateTime, final UUID fromNotificationQueueUserToken, final Long accountRecordId, final Long tenantRecordId) {
+                final InternalCallContext internalCallContext = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "EntitlementQueue", CallOrigin.INTERNAL, UserType.SYSTEM, fromNotificationQueueUserToken);
 
+                try {
                     if (inputKey instanceof EntitlementNotificationKey) {
                         final CallContext callContext = internalCallContextFactory.createCallContext(internalCallContext);
                         processEntitlementNotification((EntitlementNotificationKey) inputKey, internalCallContext, callContext);
                     } else if (inputKey instanceof BlockingTransitionNotificationKey) {
                         processBlockingNotification((BlockingTransitionNotificationKey) inputKey, internalCallContext);
                     } else if (inputKey != null) {
-                        log.error("Entitlement service received an unexpected event className='{}", inputKey.getClass());
+                        log.error("Entitlement service received an unexpected event className='{}'", inputKey.getClass());
+                        throw new RetryException();
                     } else {
                         log.error("Entitlement service received an unexpected null event");
+                        // No retry
                     }
+                } catch (final EntitlementApiException e) {
+                    throw new RetryException(e);
+                } catch (final EventBusException e) {
+                    throw new RetryException(e);
                 }
-            };
+            }
+        };
 
+        try {
+            final NotificationQueueHandler retryableHandler = new RetryableHandler(this, queueHandler, internalCallContextFactory);
             entitlementEventQueue = notificationQueueService.createNotificationQueue(ENTITLEMENT_SERVICE_NAME,
                                                                                      NOTIFICATION_QUEUE_NAME,
-                                                                                     queueHandler);
+                                                                                     retryableHandler);
         } catch (final NotificationQueueAlreadyExists e) {
             throw new RuntimeException(e);
         }
+
+        super.initialize(entitlementEventQueue, queueHandler);
     }
 
-    private void processEntitlementNotification(final EntitlementNotificationKey key, final InternalCallContext internalCallContext, final CallContext callContext) {
-        final Entitlement entitlement;
-        try {
-            entitlement = entitlementInternalApi.getEntitlementForId(key.getEntitlementId(), internalCallContext);
-        } catch (final EntitlementApiException e) {
-            log.error("Error retrieving entitlementId='{}'", key.getEntitlementId(), e);
-            return;
-        }
-
+    private void processEntitlementNotification(final EntitlementNotificationKey key, final InternalCallContext internalCallContext, final CallContext callContext) throws RetryException, EntitlementApiException {
+        final Entitlement entitlement = entitlementInternalApi.getEntitlementForId(key.getEntitlementId(), internalCallContext);
         if (!(entitlement instanceof DefaultEntitlement)) {
             log.error("Error retrieving entitlementId='{}', unexpected entitlement className='{}'", key.getEntitlementId(), entitlement.getClass().getName());
-            return;
+            throw new RetryException();
         }
 
         final EntitlementNotificationKeyAction entitlementNotificationKeyAction = key.getEntitlementNotificationKeyAction();
-        try {
-            if (EntitlementNotificationKeyAction.CHANGE.equals(entitlementNotificationKeyAction) ||
-                EntitlementNotificationKeyAction.CANCEL.equals(entitlementNotificationKeyAction)) {
-                blockAddOnsIfRequired(key, (DefaultEntitlement) entitlement, callContext, internalCallContext);
-            } else if (EntitlementNotificationKeyAction.PAUSE.equals(entitlementNotificationKeyAction)) {
-                entitlementInternalApi.pause(key.getBundleId(), internalCallContext.toLocalDate(key.getEffectiveDate()), ImmutableList.<PluginProperty>of(), internalCallContext);
-            } else if (EntitlementNotificationKeyAction.RESUME.equals(entitlementNotificationKeyAction)) {
-                entitlementInternalApi.resume(key.getBundleId(), internalCallContext.toLocalDate(key.getEffectiveDate()), ImmutableList.<PluginProperty>of(), internalCallContext);
-            }
-        } catch (final EntitlementApiException e) {
-            log.error("Error processing event for entitlementId='{}'", entitlement.getId(), e);
+        if (EntitlementNotificationKeyAction.CHANGE.equals(entitlementNotificationKeyAction) ||
+            EntitlementNotificationKeyAction.CANCEL.equals(entitlementNotificationKeyAction)) {
+            blockAddOnsIfRequired(key, (DefaultEntitlement) entitlement, callContext, internalCallContext);
+        } else if (EntitlementNotificationKeyAction.PAUSE.equals(entitlementNotificationKeyAction)) {
+            entitlementInternalApi.pause(key.getBundleId(), internalCallContext.toLocalDate(key.getEffectiveDate()), ImmutableList.<PluginProperty>of(), internalCallContext);
+        } else if (EntitlementNotificationKeyAction.RESUME.equals(entitlementNotificationKeyAction)) {
+            entitlementInternalApi.resume(key.getBundleId(), internalCallContext.toLocalDate(key.getEffectiveDate()), ImmutableList.<PluginProperty>of(), internalCallContext);
         }
     }
 
@@ -175,7 +179,7 @@ public class DefaultEntitlementService implements EntitlementService {
         }
     }
 
-    private void processBlockingNotification(final BlockingTransitionNotificationKey key, final InternalCallContext internalCallContext) {
+    private void processBlockingNotification(final BlockingTransitionNotificationKey key, final InternalCallContext internalCallContext) throws EventBusException {
         // Check if the blocking state has been deleted since
         if (blockingStateDao.getById(key.getBlockingStateId(), internalCallContext) == null) {
             log.debug("BlockingState {} has been deleted, not sending a bus event", key.getBlockingStateId());
@@ -195,15 +199,13 @@ public class DefaultEntitlementService implements EntitlementService {
                                                                           internalCallContext.getTenantRecordId(),
                                                                           internalCallContext.getUserToken());
 
-        try {
-            eventBus.post(event);
-        } catch (final EventBusException e) {
-            log.warn("Failed to post event {}", event, e);
-        }
+        eventBus.post(event);
     }
 
     @LifecycleHandlerType(LifecycleLevel.START_SERVICE)
     public void start() {
+        super.start();
+
         entitlementEventQueue.startQueue();
     }
 
@@ -213,5 +215,7 @@ public class DefaultEntitlementService implements EntitlementService {
             entitlementEventQueue.stopQueue();
             notificationQueueService.deleteNotificationQueue(entitlementEventQueue.getServiceName(), entitlementEventQueue.getQueueName());
         }
+
+        super.stop();
     }
 }

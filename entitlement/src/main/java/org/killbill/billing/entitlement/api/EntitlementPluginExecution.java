@@ -63,7 +63,15 @@ public class EntitlementPluginExecution {
                 updatedPluginContexts.add(new DefaultEntitlementContext(pluginContext, priorEntitlementResult));
             }
 
-            preCallbacksCallback.call();
+            try {
+                preCallbacksCallback.call();
+            } catch (final Exception e) {
+                if (e instanceof EntitlementApiException) {
+                    throw (EntitlementApiException) e;
+                } else {
+                    throw new EntitlementApiException(e, ErrorCode.__UNKNOWN_ERROR_CODE);
+                }
+            }
 
             try {
                 for (int i = 0; i < updatedPluginContexts.size(); i++) {
@@ -80,9 +88,11 @@ public class EntitlementPluginExecution {
                 throw e;
             }
         } catch (final EntitlementPluginApiException e) {
-            throw new EntitlementApiException(ErrorCode.ENT_PLUGIN_API_ABORTED, e.getMessage());
+            throw new EntitlementApiException(ErrorCode.UNEXPECTED_ERROR, e.getMessage());
+        } catch (final EntitlementApiException e) {
+            throw e;
         } catch (final Exception e) {
-            throw new EntitlementApiException(ErrorCode.ENT_PLUGIN_API_ABORTED, e.getMessage());
+            throw new EntitlementApiException(ErrorCode.UNEXPECTED_ERROR, e.getMessage());
         }
     }
 
@@ -102,7 +112,11 @@ public class EntitlementPluginExecution {
                 throw e;
             }
         } catch (final EntitlementPluginApiException e) {
-            throw new EntitlementApiException(ErrorCode.ENT_PLUGIN_API_ABORTED, e.getMessage());
+            throw new EntitlementApiException(ErrorCode.UNEXPECTED_ERROR, e.getMessage());
+        } catch (final EntitlementApiException e) {
+            throw e;
+        } catch (final Exception e) {
+            throw new EntitlementApiException(ErrorCode.UNEXPECTED_ERROR, e.getMessage());
         }
     }
 
@@ -129,22 +143,30 @@ public class EntitlementPluginExecution {
     }
 
     private OnSuccessEntitlementResult executePluginOnSuccessCalls(final EntitlementContext context) throws EntitlementPluginApiException {
-        for (final String pluginName : pluginRegistry.getAllServices()) {
-            final EntitlementPluginApi plugin = pluginRegistry.getServiceForName(pluginName);
-            if (plugin != null) {
-                plugin.onSuccessCall(context, context.getPluginProperties());
+        try {
+            for (final String pluginName : pluginRegistry.getAllServices()) {
+                final EntitlementPluginApi plugin = pluginRegistry.getServiceForName(pluginName);
+                if (plugin != null) {
+                    plugin.onSuccessCall(context, context.getPluginProperties());
+                }
             }
+            return null;
+        } catch (final RuntimeException e) {
+            throw new EntitlementPluginApiException(e);
         }
-        return null;
     }
 
     private OnFailureEntitlementResult executePluginOnFailureCalls(final EntitlementContext context) throws EntitlementPluginApiException {
-        for (final String pluginName : pluginRegistry.getAllServices()) {
-            final EntitlementPluginApi plugin = pluginRegistry.getServiceForName(pluginName);
-            if (plugin != null) {
-                plugin.onFailureCall(context, context.getPluginProperties());
+        try {
+            for (final String pluginName : pluginRegistry.getAllServices()) {
+                final EntitlementPluginApi plugin = pluginRegistry.getServiceForName(pluginName);
+                if (plugin != null) {
+                    plugin.onFailureCall(context, context.getPluginProperties());
+                }
             }
+            return null;
+        } catch (final RuntimeException e) {
+            throw new EntitlementPluginApiException(e);
         }
-        return null;
     }
 }

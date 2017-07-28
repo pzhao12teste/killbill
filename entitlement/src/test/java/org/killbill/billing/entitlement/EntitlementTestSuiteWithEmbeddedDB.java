@@ -45,9 +45,11 @@ import org.killbill.billing.entitlement.dao.BlockingStateDao;
 import org.killbill.billing.entitlement.engine.core.EntitlementUtils;
 import org.killbill.billing.entitlement.engine.core.EventsStreamBuilder;
 import org.killbill.billing.entitlement.glue.TestEntitlementModuleWithEmbeddedDB;
+import org.killbill.billing.entitlement.plugin.api.EntitlementPluginApi;
 import org.killbill.billing.junction.BlockingInternalApi;
 import org.killbill.billing.lifecycle.api.BusService;
 import org.killbill.billing.mock.MockAccountBuilder;
+import org.killbill.billing.osgi.api.OSGIServiceRegistration;
 import org.killbill.billing.platform.api.KillbillConfigSource;
 import org.killbill.billing.security.Permission;
 import org.killbill.billing.security.api.SecurityApi;
@@ -61,6 +63,7 @@ import org.killbill.billing.util.dao.NonEntityDao;
 import org.killbill.billing.util.tag.dao.TagDao;
 import org.killbill.bus.api.PersistentBus;
 import org.killbill.clock.ClockMock;
+import org.killbill.notificationq.api.NotificationQueueService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.AfterMethod;
@@ -120,6 +123,10 @@ public class EntitlementTestSuiteWithEmbeddedDB extends GuicyKillbillTestSuiteWi
     protected SecurityApi securityApi;
     @Inject
     protected NonEntityDao nonEntityDao;
+    @Inject
+    protected NotificationQueueService notificationQueueService;
+    @Inject
+    protected OSGIServiceRegistration<EntitlementPluginApi> pluginRegistry;
 
     protected Catalog catalog;
 
