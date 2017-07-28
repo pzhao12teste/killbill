@@ -22,6 +22,6 @@ import org.killbill.billing.callcontext.InternalCallContext;
 
 public interface EventListener {
 
-    public void processEventReady(final SubscriptionBaseEvent event, final int seqId, final InternalCallContext context);
+    public void processEventReady(final SubscriptionBaseEvent event, final int seqId, final InternalCallContext context) throws Exception;
 
 }

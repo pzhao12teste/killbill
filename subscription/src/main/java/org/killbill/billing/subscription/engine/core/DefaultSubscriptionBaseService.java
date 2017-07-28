@@ -1,7 +1,7 @@
 /*
  * Copyright 2010-2013 Ning, Inc.
- * Copyright 2014-2016 Groupon, Inc
- * Copyright 2014-2016 The Billing Project, LLC
+ * Copyright 2014-2017 Groupon, Inc
+ * Copyright 2014-2017 The Billing Project, LLC
  *
  * The Billing Project licenses this file to you under the Apache License, version 2.0
  * (the "License"); you may not use this file except in compliance with the
@@ -38,14 +38,15 @@ import org.killbill.billing.subscription.events.SubscriptionBaseEvent;
 import org.killbill.billing.subscription.events.SubscriptionBaseEvent.EventType;
 import org.killbill.billing.subscription.events.phase.PhaseEvent;
 import org.killbill.billing.subscription.events.phase.PhaseEventData;
-import org.killbill.billing.subscription.exceptions.SubscriptionBaseError;
 import org.killbill.billing.util.callcontext.CallContext;
 import org.killbill.billing.util.callcontext.CallOrigin;
 import org.killbill.billing.util.callcontext.InternalCallContextFactory;
 import org.killbill.billing.util.callcontext.UserType;
+import org.killbill.billing.util.listener.RetryException;
+import org.killbill.billing.util.listener.RetryableHandler;
+import org.killbill.billing.util.listener.RetryableService;
 import org.killbill.bus.api.BusEvent;
 import org.killbill.bus.api.PersistentBus;
-import org.killbill.bus.api.PersistentBus.EventBusException;
 import org.killbill.clock.Clock;
 import org.killbill.notificationq.api.NotificationEvent;
 import org.killbill.notificationq.api.NotificationQueue;
@@ -58,7 +59,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.inject.Inject;
 
-public class DefaultSubscriptionBaseService implements EventListener, SubscriptionBaseService {
+public class DefaultSubscriptionBaseService extends RetryableService implements EventListener, SubscriptionBaseService {
 
     public static final String NOTIFICATION_QUEUE_NAME = "subscription-events";
     public static final String SUBSCRIPTION_SERVICE_NAME = "subscription-service";
@@ -81,6 +82,7 @@ public class DefaultSubscriptionBaseService implements EventListener, Subscripti
                                           final NotificationQueueService notificationQueueService,
                                           final InternalCallContextFactory internalCallContextFactory,
                                           final SubscriptionBaseApiService apiService) {
+        super(notificationQueueService, internalCallContextFactory);
         this.clock = clock;
         this.dao = dao;
         this.planAligner = planAligner;
@@ -97,38 +99,47 @@ public class DefaultSubscriptionBaseService implements EventListener, Subscripti
 
     @LifecycleHandlerType(LifecycleLevel.INIT_SERVICE)
     public void initialize() {
-        try {
-            final NotificationQueueHandler queueHandler = new NotificationQueueHandler() {
-                @Override
-                public void handleReadyNotification(final NotificationEvent inputKey, final DateTime eventDateTime, final UUID fromNotificationQueueUserToken, final Long accountRecordId, final Long tenantRecordId) {
-                    if (!(inputKey instanceof SubscriptionNotificationKey)) {
-                        log.error("SubscriptionBase service received an unexpected event className='{}'", inputKey.getClass().getName());
-                        return;
-                    }
-
-                    final SubscriptionNotificationKey key = (SubscriptionNotificationKey) inputKey;
-                    final SubscriptionBaseEvent event = dao.getEventById(key.getEventId(), internalCallContextFactory.createInternalTenantContext(tenantRecordId, accountRecordId));
-                    if (event == null) {
-                        // This can be expected if the event is soft deleted (is_active = 0)
-                        log.debug("Failed to extract event for notification key {}", inputKey);
-                        return;
-                    }
-
-                    final InternalCallContext context = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "SubscriptionEventQueue", CallOrigin.INTERNAL, UserType.SYSTEM, fromNotificationQueueUserToken);
-                    processEventReady(event, key.getSeqId(), context);
+        final NotificationQueueHandler queueHandler = new NotificationQueueHandler() {
+            @Override
+            public void handleReadyNotification(final NotificationEvent inputKey, final DateTime eventDateTime, final UUID fromNotificationQueueUserToken, final Long accountRecordId, final Long tenantRecordId) {
+                if (!(inputKey instanceof SubscriptionNotificationKey)) {
+                    log.error("SubscriptionBase service received an unexpected event className='{}'", inputKey.getClass().getName());
+                    throw new RetryException();
                 }
-            };
 
+                final SubscriptionNotificationKey key = (SubscriptionNotificationKey) inputKey;
+                final SubscriptionBaseEvent event = dao.getEventById(key.getEventId(), internalCallContextFactory.createInternalTenantContext(tenantRecordId, accountRecordId));
+                if (event == null) {
+                    // This can be expected if the event is soft deleted (is_active = 0)
+                    log.debug("Failed to extract event for notification key {}", inputKey);
+                    return;
+                }
+
+                final InternalCallContext context = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "SubscriptionEventQueue", CallOrigin.INTERNAL, UserType.SYSTEM, fromNotificationQueueUserToken);
+                try {
+                    processEventReady(event, key.getSeqId(), context);
+                } catch (final Exception e) {
+                    throw new RetryException(e);
+                }
+            }
+        };
+
+        try {
+            final NotificationQueueHandler retryableHandler = new RetryableHandler(this, queueHandler, internalCallContextFactory);
             subscriptionEventQueue = notificationQueueService.createNotificationQueue(SUBSCRIPTION_SERVICE_NAME,
                                                                                       NOTIFICATION_QUEUE_NAME,
-                                                                                      queueHandler);
+                                                                                      retryableHandler);
         } catch (final NotificationQueueAlreadyExists e) {
             throw new RuntimeException(e);
         }
+
+        super.initialize(subscriptionEventQueue, queueHandler);
     }
 
     @LifecycleHandlerType(LifecycleLevel.START_SERVICE)
     public void start() {
+        super.start();
+
         subscriptionEventQueue.startQueue();
     }
 
@@ -138,66 +149,58 @@ public class DefaultSubscriptionBaseService implements EventListener, Subscripti
             subscriptionEventQueue.stopQueue();
             notificationQueueService.deleteNotificationQueue(subscriptionEventQueue.getServiceName(), subscriptionEventQueue.getQueueName());
         }
+
+        super.stop();
     }
 
     @Override
-    public void processEventReady(final SubscriptionBaseEvent event, final int seqId, final InternalCallContext context) {
+    public void processEventReady(final SubscriptionBaseEvent event, final int seqId, final InternalCallContext context) throws Exception {
         if (!event.isActive()) {
             return;
         }
 
-        try {
-            final DefaultSubscriptionBase subscription = (DefaultSubscriptionBase) dao.getSubscriptionFromId(event.getSubscriptionId(), context);
-            if (subscription == null) {
-                log.warn("Error retrieving subscriptionId='{}'", event.getSubscriptionId());
-                return;
-            }
+        final DefaultSubscriptionBase subscription = (DefaultSubscriptionBase) dao.getSubscriptionFromId(event.getSubscriptionId(), context);
+        if (subscription == null) {
+            log.warn("Error retrieving subscriptionId='{}'", event.getSubscriptionId());
+            throw new RetryException();
+        }
 
-            final SubscriptionBaseTransitionData transition = subscription.getTransitionFromEvent(event, seqId);
-            if (transition == null) {
-                log.warn("Skipping event ='{}', no matching transition was built", event.getType());
-                return;
-            }
+        final SubscriptionBaseTransitionData transition = subscription.getTransitionFromEvent(event, seqId);
+        if (transition == null) {
+            log.warn("Skipping event ='{}', no matching transition was built", event.getType());
+            return;
+        }
 
-            boolean eventSent = false;
-            if (event.getType() == EventType.PHASE) {
-                eventSent = onPhaseEvent(subscription, event, context);
-            } else if (event.getType() == EventType.API_USER && subscription.getCategory() == ProductCategory.BASE) {
-                final CallContext callContext = internalCallContextFactory.createCallContext(context);
-                eventSent = onBasePlanEvent(subscription, event, callContext);
-            } else if (event.getType() == EventType.BCD_UPDATE) {
-                eventSent = false;
-            }
+        boolean eventSent = false;
+        if (event.getType() == EventType.PHASE) {
+            eventSent = onPhaseEvent(subscription, event, context);
+        } else if (event.getType() == EventType.API_USER && subscription.getCategory() == ProductCategory.BASE) {
+            final CallContext callContext = internalCallContextFactory.createCallContext(context);
+            eventSent = onBasePlanEvent(subscription, event, callContext);
+        } else if (event.getType() == EventType.BCD_UPDATE) {
+            eventSent = false;
+        }
 
-            if (!eventSent) {
-                // Methods above invoking the DAO will send this event directly from the transaction
-                final BusEvent busEvent = new DefaultEffectiveSubscriptionEvent(transition,
-                                                                                subscription.getAlignStartDate(),
-                                                                                context.getUserToken(),
-                                                                                context.getAccountRecordId(),
-                                                                                context.getTenantRecordId());
-                eventBus.post(busEvent);
-            }
-        } catch (final EventBusException e) {
-            log.warn("Failed to post event {}", event, e);
-        } catch (final CatalogApiException e) {
-            log.warn("Failed to post event {}", event, e);
+        if (!eventSent) {
+            // Methods above invoking the DAO will send this event directly from the transaction
+            final BusEvent busEvent = new DefaultEffectiveSubscriptionEvent(transition,
+                                                                            subscription.getAlignStartDate(),
+                                                                            context.getUserToken(),
+                                                                            context.getAccountRecordId(),
+                                                                            context.getTenantRecordId());
+            eventBus.post(busEvent);
         }
     }
 
     private boolean onPhaseEvent(final DefaultSubscriptionBase subscription, final SubscriptionBaseEvent readyPhaseEvent, final InternalCallContext context) {
-        try {
-            final TimedPhase nextTimedPhase = planAligner.getNextTimedPhase(subscription, readyPhaseEvent.getEffectiveDate(), context);
-            final PhaseEvent nextPhaseEvent = (nextTimedPhase != null) ?
-                                              PhaseEventData.createNextPhaseEvent(subscription.getId(),
-                                                                                  nextTimedPhase.getPhase().getName(), nextTimedPhase.getStartPhase()) :
-                                              null;
-            if (nextPhaseEvent != null) {
-                dao.createNextPhaseEvent(subscription, readyPhaseEvent, nextPhaseEvent, context);
-                return true;
-            }
-        } catch (final SubscriptionBaseError e) {
-            log.warn("Error inserting next phase for subscriptionId='{}'", subscription.getId(), e);
+        final TimedPhase nextTimedPhase = planAligner.getNextTimedPhase(subscription, readyPhaseEvent.getEffectiveDate(), context);
+        final PhaseEvent nextPhaseEvent = (nextTimedPhase != null) ?
+                                          PhaseEventData.createNextPhaseEvent(subscription.getId(),
+                                                                              nextTimedPhase.getPhase().getName(), nextTimedPhase.getStartPhase()) :
+                                          null;
+        if (nextPhaseEvent != null) {
+            dao.createNextPhaseEvent(subscription, readyPhaseEvent, nextPhaseEvent, context);
+            return true;
         }
 
         return false;
