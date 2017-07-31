@@ -177,6 +177,7 @@ public class PlanAligner extends BaseAligner {
                                                  pendingOrLastPlanTransition.getPreviousPlan(),
                                                  pendingOrLastPlanTransition.getNextPlan(),
                                                  effectiveDate,
+                                                 subscription.getAlignStartDate(),
                                                  pendingOrLastPlanTransition.getEffectiveTransitionTime(),
                                                  subscription.getAllTransitions().get(0).getNextPhase().getPhaseType(),
                                                  null,
@@ -195,7 +196,7 @@ public class PlanAligner extends BaseAligner {
                                                    final DateTime bundleStartDate,
                                                    final Plan plan,
                                                    @Nullable final PhaseType initialPhase,
-                                                   final DateTime effectiveDate,
+                                                   final DateTime catalogEffectiveDate,
                                                    final InternalTenantContext context)
             throws CatalogApiException, SubscriptionBaseApiException {
         final Catalog catalog = catalogService.getFullCatalog(true, true, context);
@@ -203,7 +204,7 @@ public class PlanAligner extends BaseAligner {
         final PlanSpecifier planSpecifier = new PlanSpecifier(plan.getName());
 
         final DateTime planStartDate;
-        final PlanAlignmentCreate alignment = catalog.planCreateAlignment(planSpecifier, effectiveDate);
+        final PlanAlignmentCreate alignment = catalog.planCreateAlignment(planSpecifier, catalogEffectiveDate);
         switch (alignment) {
             case START_OF_SUBSCRIPTION:
                 planStartDate = subscriptionStartDate;
@@ -236,6 +237,7 @@ public class PlanAligner extends BaseAligner {
                                      pendingOrLastPlanTransition.getNextPlan(),
                                      nextPlan,
                                      effectiveDate,
+                                     effectiveDate,
                                      // This method is only called while doing the change, hence we want to pass the change effective date
                                      effectiveDate,
                                      subscription.getAllTransitions().get(0).getNextPhase().getPhaseType(),
@@ -250,6 +252,7 @@ public class PlanAligner extends BaseAligner {
                                              final Plan currentPlan,
                                              final Plan nextPlan,
                                              final DateTime effectiveDate,
+                                             final DateTime catalogEffectiveDate,
                                              final DateTime lastOrCurrentChangeEffectiveDate,
                                              final PhaseType originalInitialPhase,
                                              @Nullable final PhaseType newPlanInitialPhaseType,
@@ -262,7 +265,7 @@ public class PlanAligner extends BaseAligner {
         final PlanSpecifier toPlanSpecifier = new PlanSpecifier(nextPlan.getName());
         final PhaseType initialPhase;
         final DateTime planStartDate;
-        final PlanAlignmentChange alignment = catalog.planChangeAlignment(fromPlanPhaseSpecifier, toPlanSpecifier, effectiveDate);
+        final PlanAlignmentChange alignment = catalog.planChangeAlignment(fromPlanPhaseSpecifier, toPlanSpecifier, catalogEffectiveDate);
         switch (alignment) {
             case START_OF_SUBSCRIPTION:
                 planStartDate = subscriptionStartDate;
