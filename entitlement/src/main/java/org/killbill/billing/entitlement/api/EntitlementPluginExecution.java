@@ -69,7 +69,7 @@ public class EntitlementPluginExecution {
                 if (e instanceof EntitlementApiException) {
                     throw (EntitlementApiException) e;
                 } else {
-                    throw new EntitlementApiException(e, ErrorCode.__UNKNOWN_ERROR_CODE);
+                    throw new EntitlementApiException(e, ErrorCode.UNEXPECTED_ERROR);
                 }
             }
 
