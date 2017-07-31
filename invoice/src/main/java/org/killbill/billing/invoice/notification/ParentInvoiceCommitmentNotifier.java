@@ -1,6 +1,6 @@
 /*
- * Copyright 2014-2016 Groupon, Inc
- * Copyright 2014-2016 The Billing Project, LLC
+ * Copyright 2014-2017 Groupon, Inc
+ * Copyright 2014-2017 The Billing Project, LLC
  *
  * The Billing Project licenses this file to you under the Apache License, version 2.0
  * (the "License"); you may not use this file except in compliance with the
@@ -22,8 +22,11 @@ import java.util.UUID;
 import org.joda.time.DateTime;
 import org.killbill.billing.invoice.InvoiceListener;
 import org.killbill.billing.invoice.api.DefaultInvoiceService;
+import org.killbill.billing.invoice.api.InvoiceApiException;
 import org.killbill.billing.util.callcontext.InternalCallContextFactory;
-import org.killbill.billing.util.config.definition.InvoiceConfig;
+import org.killbill.billing.util.listener.RetryException;
+import org.killbill.billing.util.listener.RetryableHandler;
+import org.killbill.billing.util.listener.RetryableService;
 import org.killbill.notificationq.api.NotificationEvent;
 import org.killbill.notificationq.api.NotificationQueue;
 import org.killbill.notificationq.api.NotificationQueueService;
@@ -35,53 +38,62 @@ import org.slf4j.LoggerFactory;
 
 import com.google.inject.Inject;
 
-public class ParentInvoiceCommitmentNotifier implements NextBillingDateNotifier {
-
-    private static final Logger log = LoggerFactory.getLogger(ParentInvoiceCommitmentNotifier.class);
+public class ParentInvoiceCommitmentNotifier extends RetryableService implements NextBillingDateNotifier {
 
     public static final String PARENT_INVOICE_COMMITMENT_NOTIFIER_QUEUE = "parent-invoice-commitment-queue";
 
+    private static final Logger log = LoggerFactory.getLogger(ParentInvoiceCommitmentNotifier.class);
+
     private final NotificationQueueService notificationQueueService;
     private final InvoiceListener listener;
+    private final InternalCallContextFactory internalCallContextFactory;
 
     private NotificationQueue commitInvoiceQueue;
 
     @Inject
     public ParentInvoiceCommitmentNotifier(final NotificationQueueService notificationQueueService,
-                                           final InvoiceListener listener) {
+                                           final InvoiceListener listener,
+                                           final InternalCallContextFactory internalCallContextFactory) {
+        super(notificationQueueService, internalCallContextFactory);
         this.notificationQueueService = notificationQueueService;
         this.listener = listener;
+        this.internalCallContextFactory = internalCallContextFactory;
     }
 
     @Override
     public void initialize() throws NotificationQueueAlreadyExists {
-
         final NotificationQueueHandler notificationQueueHandler = new NotificationQueueHandler() {
             @Override
             public void handleReadyNotification(final NotificationEvent notificationKey, final DateTime eventDate, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) {
                 try {
                     if (!(notificationKey instanceof ParentInvoiceCommitmentNotificationKey)) {
                         log.error("Invoice service received an unexpected event type {}", notificationKey.getClass().getName());
-                        return;
+                        throw new RetryException();
                     }
 
                     final ParentInvoiceCommitmentNotificationKey key = (ParentInvoiceCommitmentNotificationKey) notificationKey;
 
                     listener.handleParentInvoiceCommitmentEvent(key.getUuidKey(), userToken, accountRecordId, tenantRecordId);
-
-                } catch (IllegalArgumentException e) {
-                    log.error("The key returned from the ParentInvoiceCommitmentQueue is not a valid UUID", e);
+                } catch (final IllegalArgumentException e) {
+                    throw new RetryException(e);
+                } catch (final InvoiceApiException e) {
+                    throw new RetryException(e);
                 }
             }
         };
 
+        final NotificationQueueHandler retryableHandler = new RetryableHandler(this, notificationQueueHandler, internalCallContextFactory);
         commitInvoiceQueue = notificationQueueService.createNotificationQueue(DefaultInvoiceService.INVOICE_SERVICE_NAME,
                                                                               PARENT_INVOICE_COMMITMENT_NOTIFIER_QUEUE,
-                                                                              notificationQueueHandler);
+                                                                              retryableHandler);
+
+        super.initialize(commitInvoiceQueue, notificationQueueHandler);
     }
 
     @Override
     public void start() {
+        super.start();
+
         commitInvoiceQueue.startQueue();
     }
 
@@ -91,6 +103,7 @@ public class ParentInvoiceCommitmentNotifier implements NextBillingDateNotifier 
             commitInvoiceQueue.stopQueue();
             notificationQueueService.deleteNotificationQueue(commitInvoiceQueue.getServiceName(), commitInvoiceQueue.getQueueName());
         }
-    }
 
+        super.stop();
+    }
 }

@@ -86,7 +86,7 @@ public abstract class RetryableService {
                                                                          userToken,
                                                                          searchKey1,
                                                                          searchKey2);
-                        } catch (final RetryException e) {
+                        } catch (final RuntimeException e) {
                             final InternalCallContext internalCallContext = internalCallContextFactory.createInternalCallContext(searchKey2,
                                                                                                                                  searchKey1,
                                                                                                                                  "RetryableService",
@@ -125,7 +125,7 @@ public abstract class RetryableService {
     }
 
     // Called by the original handler (RetryableHandler)
-    protected void scheduleRetry(final RetryException exception,
+    protected void scheduleRetry(final RuntimeException exception,
                                  final NotificationEvent originalNotificationEvent,
                                  final DateTime originalEventDateTime,
                                  final InternalCallContext context) {

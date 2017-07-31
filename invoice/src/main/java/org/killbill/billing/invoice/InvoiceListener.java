@@ -102,22 +102,14 @@ public class InvoiceListener {
         }
     }
 
-    public void handleNextBillingDateEvent(final UUID subscriptionId, final DateTime eventDateTime, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) {
-        try {
-            final InternalCallContext context = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "Next Billing Date", CallOrigin.INTERNAL, UserType.SYSTEM, userToken);
-            dispatcher.processSubscriptionForInvoiceGeneration(subscriptionId, context.toLocalDate(eventDateTime), context);
-        } catch (InvoiceApiException e) {
-            log.warn("Unable to process subscriptionId='{}', eventDateTime='{}'", subscriptionId, eventDateTime, e);
-        }
+    public void handleNextBillingDateEvent(final UUID subscriptionId, final DateTime eventDateTime, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) throws InvoiceApiException {
+        final InternalCallContext context = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "Next Billing Date", CallOrigin.INTERNAL, UserType.SYSTEM, userToken);
+        dispatcher.processSubscriptionForInvoiceGeneration(subscriptionId, context.toLocalDate(eventDateTime), context);
     }
 
-    public void handleEventForInvoiceNotification(final UUID subscriptionId, final DateTime eventDateTime, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) {
-        try {
-            final InternalCallContext context = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "Next Billing Date", CallOrigin.INTERNAL, UserType.SYSTEM, userToken);
-            dispatcher.processSubscriptionForInvoiceNotification(subscriptionId, context.toLocalDate(eventDateTime), context);
-        } catch (InvoiceApiException e) {
-            log.warn("Unable to process subscriptionId='{}', eventDateTime='{}'", subscriptionId, eventDateTime, e);
-        }
+    public void handleEventForInvoiceNotification(final UUID subscriptionId, final DateTime eventDateTime, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) throws InvoiceApiException {
+        final InternalCallContext context = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "Next Billing Date", CallOrigin.INTERNAL, UserType.SYSTEM, userToken);
+        dispatcher.processSubscriptionForInvoiceNotification(subscriptionId, context.toLocalDate(eventDateTime), context);
     }
 
     @AllowConcurrentEvents
@@ -144,13 +136,9 @@ public class InvoiceListener {
         return account.getParentAccountId() != null && account.isPaymentDelegatedToParent();
     }
 
-    public void handleParentInvoiceCommitmentEvent(final UUID invoiceId, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) {
-        try {
-            final InternalCallContext context = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "Commit Invoice", CallOrigin.INTERNAL, UserType.SYSTEM, userToken);
-            invoiceApi.commitInvoice(invoiceId, context);
-        } catch (InvoiceApiException e) {
-            log.error(e.getMessage());
-        }
+    public void handleParentInvoiceCommitmentEvent(final UUID invoiceId, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) throws InvoiceApiException {
+        final InternalCallContext context = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "Commit Invoice", CallOrigin.INTERNAL, UserType.SYSTEM, userToken);
+        invoiceApi.commitInvoice(invoiceId, context);
     }
 
     @AllowConcurrentEvents

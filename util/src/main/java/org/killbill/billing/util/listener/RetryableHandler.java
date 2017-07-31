@@ -45,7 +45,7 @@ public class RetryableHandler implements NotificationQueueHandler {
     public void handleReadyNotification(final NotificationEvent notificationEvent, final DateTime eventDateTime, final UUID userToken, final Long searchKey1, final Long searchKey2) {
         try {
             handlerDelegate.handleReadyNotification(notificationEvent, eventDateTime, userToken, searchKey1, searchKey2);
-        } catch (final RetryException e) {
+        } catch (final RuntimeException e) {
             // Let the retry queue handle the exception
             final InternalCallContext internalCallContext = internalCallContextFactory.createInternalCallContext(searchKey2,
                                                                                                                  searchKey1,
