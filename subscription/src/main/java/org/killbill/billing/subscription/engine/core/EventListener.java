@@ -1,7 +1,9 @@
 /*
  * Copyright 2010-2013 Ning, Inc.
+ * Copyright 2014-2017 Groupon, Inc
+ * Copyright 2014-2017 The Billing Project, LLC
  *
- * Ning licenses this file to you under the Apache License, version 2.0
+ * The Billing Project licenses this file to you under the Apache License, version 2.0
  * (the "License"); you may not use this file except in compliance with the
  * License.  You may obtain a copy of the License at:
  *
@@ -16,12 +18,13 @@
 
 package org.killbill.billing.subscription.engine.core;
 
+import org.killbill.billing.catalog.api.CatalogApiException;
 import org.killbill.billing.subscription.events.SubscriptionBaseEvent;
 import org.killbill.billing.callcontext.InternalCallContext;
-
+import org.killbill.bus.api.PersistentBus.EventBusException;
 
 public interface EventListener {
 
-    public void processEventReady(final SubscriptionBaseEvent event, final int seqId, final InternalCallContext context) throws Exception;
+    public void processEventReady(final SubscriptionBaseEvent event, final int seqId, final InternalCallContext context) throws CatalogApiException, EventBusException;
 
 }

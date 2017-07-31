@@ -125,7 +125,7 @@ public abstract class RetryableService {
     }
 
     // Called by the original handler (RetryableHandler)
-    protected void scheduleRetry(final RuntimeException exception,
+    protected void scheduleRetry(final Throwable exception,
                                  final NotificationEvent originalNotificationEvent,
                                  final DateTime originalEventDateTime,
                                  final InternalCallContext context) {

@@ -47,6 +47,7 @@ import org.killbill.billing.util.listener.RetryableHandler;
 import org.killbill.billing.util.listener.RetryableService;
 import org.killbill.bus.api.BusEvent;
 import org.killbill.bus.api.PersistentBus;
+import org.killbill.bus.api.PersistentBus.EventBusException;
 import org.killbill.clock.Clock;
 import org.killbill.notificationq.api.NotificationEvent;
 import org.killbill.notificationq.api.NotificationQueue;
@@ -118,7 +119,9 @@ public class DefaultSubscriptionBaseService extends RetryableService implements 
                 final InternalCallContext context = internalCallContextFactory.createInternalCallContext(tenantRecordId, accountRecordId, "SubscriptionEventQueue", CallOrigin.INTERNAL, UserType.SYSTEM, fromNotificationQueueUserToken);
                 try {
                     processEventReady(event, key.getSeqId(), context);
-                } catch (final Exception e) {
+                } catch (final CatalogApiException e) {
+                    throw new RetryException(e);
+                } catch (final EventBusException e) {
                     throw new RetryException(e);
                 }
             }
@@ -154,7 +157,7 @@ public class DefaultSubscriptionBaseService extends RetryableService implements 
     }
 
     @Override
-    public void processEventReady(final SubscriptionBaseEvent event, final int seqId, final InternalCallContext context) throws Exception {
+    public void processEventReady(final SubscriptionBaseEvent event, final int seqId, final InternalCallContext context) throws CatalogApiException, EventBusException {
         if (!event.isActive()) {
             return;
         }

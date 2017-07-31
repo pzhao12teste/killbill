@@ -46,14 +46,21 @@ public class RetryableHandler implements NotificationQueueHandler {
         try {
             handlerDelegate.handleReadyNotification(notificationEvent, eventDateTime, userToken, searchKey1, searchKey2);
         } catch (final RuntimeException e) {
-            // Let the retry queue handle the exception
-            final InternalCallContext internalCallContext = internalCallContextFactory.createInternalCallContext(searchKey2,
-                                                                                                                 searchKey1,
-                                                                                                                 "RetryableHandler",
-                                                                                                                 CallOrigin.INTERNAL,
-                                                                                                                 UserType.SYSTEM,
-                                                                                                                 userToken);
-            retryableService.scheduleRetry(e, notificationEvent, eventDateTime, internalCallContext);
+            scheduleRetry(notificationEvent, eventDateTime, userToken, searchKey1, searchKey2, e);
+        } catch (final Error e) {
+            // e.g. SubscriptionBaseError
+            scheduleRetry(notificationEvent, eventDateTime, userToken, searchKey1, searchKey2, e);
         }
+    }
+
+    private void scheduleRetry(final NotificationEvent notificationEvent, final DateTime eventDateTime, final UUID userToken, final Long searchKey1, final Long searchKey2, final Throwable e) {
+        // Let the retry queue handle the exception
+        final InternalCallContext internalCallContext = internalCallContextFactory.createInternalCallContext(searchKey2,
+                                                                                                             searchKey1,
+                                                                                                             "RetryableHandler",
+                                                                                                             CallOrigin.INTERNAL,
+                                                                                                             UserType.SYSTEM,
+                                                                                                             userToken);
+        retryableService.scheduleRetry(e, notificationEvent, eventDateTime, internalCallContext);
     }
 }
