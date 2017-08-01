@@ -128,7 +128,7 @@ public class DefaultSubscriptionBaseService extends RetryableService implements 
         };
 
         try {
-            final NotificationQueueHandler retryableHandler = new RetryableHandler(this, queueHandler, internalCallContextFactory);
+            final NotificationQueueHandler retryableHandler = new RetryableHandler(clock, this, queueHandler, internalCallContextFactory);
             subscriptionEventQueue = notificationQueueService.createNotificationQueue(SUBSCRIPTION_SERVICE_NAME,
                                                                                       NOTIFICATION_QUEUE_NAME,
                                                                                       retryableHandler);

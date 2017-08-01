@@ -36,6 +36,7 @@ import org.killbill.billing.account.api.AccountApiException;
 import org.killbill.billing.account.api.AccountInternalApi;
 import org.killbill.billing.callcontext.InternalCallContext;
 import org.killbill.billing.callcontext.InternalTenantContext;
+import org.killbill.billing.catalog.api.CatalogApiException;
 import org.killbill.billing.catalog.api.Currency;
 import org.killbill.billing.invoice.InvoiceDispatcher;
 import org.killbill.billing.invoice.InvoiceDispatcher.FutureAccountNotifications;
@@ -58,6 +59,7 @@ import org.killbill.billing.invoice.model.ExternalChargeInvoiceItem;
 import org.killbill.billing.invoice.model.InvoiceItemFactory;
 import org.killbill.billing.invoice.template.HtmlInvoice;
 import org.killbill.billing.invoice.template.HtmlInvoiceGenerator;
+import org.killbill.billing.subscription.api.user.SubscriptionBaseApiException;
 import org.killbill.billing.tag.TagInternalApi;
 import org.killbill.billing.util.UUIDs;
 import org.killbill.billing.util.api.TagApiException;
@@ -70,6 +72,7 @@ import org.killbill.billing.util.tag.ControlTagType;
 import org.killbill.billing.util.tag.Tag;
 import org.killbill.bus.api.PersistentBus;
 import org.killbill.bus.api.PersistentBus.EventBusException;
+import org.killbill.commons.locker.LockFailedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -214,11 +217,24 @@ public class DefaultInvoiceUserApi implements InvoiceUserApi {
                                             final CallContext context) throws InvoiceApiException {
         final InternalCallContext internalContext = internalCallContextFactory.createInternalCallContext(accountId, context);
 
-        final Invoice result = dispatcher.processAccount(true, accountId, targetDate, dryRunArguments, internalContext);
-        if (result == null) {
-            throw new InvoiceApiException(ErrorCode.INVOICE_NOTHING_TO_DO, accountId, targetDate != null ? targetDate : "null");
-        } else {
-            return result;
+        final Invoice result;
+        try {
+            result = dispatcher.processAccount(true, accountId, targetDate, dryRunArguments, internalContext);
+            if (result == null) {
+                throw new InvoiceApiException(ErrorCode.INVOICE_NOTHING_TO_DO, accountId, targetDate != null ? targetDate : "null");
+            } else {
+                return result;
+            }
+        } catch (final LockFailedException e) {
+            throw new InvoiceApiException(ErrorCode.UNEXPECTED_ERROR, e);
+        } catch (final AccountApiException e) {
+            throw new InvoiceApiException(ErrorCode.UNEXPECTED_ERROR, e);
+        } catch (final SubscriptionBaseApiException e) {
+            throw new InvoiceApiException(ErrorCode.UNEXPECTED_ERROR, e);
+        } catch (final CatalogApiException e) {
+            throw new InvoiceApiException(ErrorCode.UNEXPECTED_ERROR, e);
+        } catch (final EventBusException e) {
+            throw new InvoiceApiException(ErrorCode.UNEXPECTED_ERROR, e);
         }
     }
 

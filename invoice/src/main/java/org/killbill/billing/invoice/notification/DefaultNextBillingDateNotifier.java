@@ -21,6 +21,8 @@ package org.killbill.billing.invoice.notification;
 import java.util.UUID;
 
 import org.joda.time.DateTime;
+import org.killbill.billing.account.api.AccountApiException;
+import org.killbill.billing.catalog.api.CatalogApiException;
 import org.killbill.billing.invoice.InvoiceListener;
 import org.killbill.billing.invoice.api.DefaultInvoiceService;
 import org.killbill.billing.invoice.api.InvoiceApiException;
@@ -32,6 +34,8 @@ import org.killbill.billing.util.listener.RetryException;
 import org.killbill.billing.util.listener.RetryableHandler;
 import org.killbill.billing.util.listener.RetryableService;
 import org.killbill.bus.api.PersistentBus.EventBusException;
+import org.killbill.clock.Clock;
+import org.killbill.commons.locker.LockFailedException;
 import org.killbill.notificationq.api.NotificationEvent;
 import org.killbill.notificationq.api.NotificationQueue;
 import org.killbill.notificationq.api.NotificationQueueService;
@@ -49,6 +53,7 @@ public class DefaultNextBillingDateNotifier extends RetryableService implements 
 
     private static final Logger log = LoggerFactory.getLogger(DefaultNextBillingDateNotifier.class);
 
+    private final Clock clock;
     private final NotificationQueueService notificationQueueService;
     private final SubscriptionBaseInternalApi subscriptionApi;
     private final InvoiceListener listener;
@@ -57,11 +62,13 @@ public class DefaultNextBillingDateNotifier extends RetryableService implements 
     private NotificationQueue nextBillingQueue;
 
     @Inject
-    public DefaultNextBillingDateNotifier(final NotificationQueueService notificationQueueService,
+    public DefaultNextBillingDateNotifier(final Clock clock,
+                                          final NotificationQueueService notificationQueueService,
                                           final SubscriptionBaseInternalApi subscriptionApi,
                                           final InvoiceListener listener,
                                           final InternalCallContextFactory internalCallContextFactory) {
         super(notificationQueueService, internalCallContextFactory);
+        this.clock = clock;
         this.notificationQueueService = notificationQueueService;
         this.subscriptionApi = subscriptionApi;
         this.listener = listener;
@@ -100,11 +107,17 @@ public class DefaultNextBillingDateNotifier extends RetryableService implements 
                     throw new RetryException(e);
                 } catch (final InvoiceApiException e) {
                     throw new RetryException(e);
+                } catch (final LockFailedException e) {
+                    throw new RetryException(e);
+                } catch (final CatalogApiException e) {
+                    throw new RetryException(e);
+                } catch (final AccountApiException e) {
+                    throw new RetryException(e);
                 }
             }
         };
 
-        final NotificationQueueHandler retryableHandler = new RetryableHandler(this, notificationQueueHandler, internalCallContextFactory);
+        final NotificationQueueHandler retryableHandler = new RetryableHandler(clock, this, notificationQueueHandler, internalCallContextFactory);
         nextBillingQueue = notificationQueueService.createNotificationQueue(DefaultInvoiceService.INVOICE_SERVICE_NAME,
                                                                             NEXT_BILLING_DATE_NOTIFIER_QUEUE,
                                                                             retryableHandler);
@@ -129,11 +142,11 @@ public class DefaultNextBillingDateNotifier extends RetryableService implements 
         super.stop();
     }
 
-    private void processEventForInvoiceGeneration(final UUID subscriptionId, final DateTime eventDateTime, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) throws InvoiceApiException {
+    private void processEventForInvoiceGeneration(final UUID subscriptionId, final DateTime eventDateTime, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) throws InvoiceApiException, CatalogApiException, SubscriptionBaseApiException, EventBusException, LockFailedException, AccountApiException {
         listener.handleNextBillingDateEvent(subscriptionId, eventDateTime, userToken, accountRecordId, tenantRecordId);
     }
 
-    private void processEventForInvoiceNotification(final UUID subscriptionId, final DateTime eventDateTime, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) throws InvoiceApiException, EventBusException {
+    private void processEventForInvoiceNotification(final UUID subscriptionId, final DateTime eventDateTime, final UUID userToken, final Long accountRecordId, final Long tenantRecordId) throws InvoiceApiException, EventBusException, CatalogApiException, SubscriptionBaseApiException, LockFailedException, AccountApiException {
         listener.handleEventForInvoiceNotification(subscriptionId, eventDateTime, userToken, accountRecordId, tenantRecordId);
     }
 }

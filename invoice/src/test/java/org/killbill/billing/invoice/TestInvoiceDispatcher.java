@@ -56,6 +56,8 @@ import org.killbill.billing.subscription.api.user.SubscriptionBaseApiException;
 import org.killbill.billing.util.api.TagDefinitionApiException;
 import org.killbill.billing.util.tag.Tag;
 import org.killbill.billing.util.tag.dao.SystemTags;
+import org.killbill.bus.api.PersistentBus.EventBusException;
+import org.killbill.commons.locker.LockFailedException;
 import org.mockito.Mockito;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.tweak.HandleCallback;
@@ -82,7 +84,7 @@ public class TestInvoiceDispatcher extends InvoiceTestSuiteWithEmbeddedDB {
     }
 
     @Test(groups = "slow")
-    public void testDryRunInvoice() throws InvoiceApiException, AccountApiException, CatalogApiException, SubscriptionBaseApiException {
+    public void testDryRunInvoice() throws InvoiceApiException, AccountApiException, CatalogApiException, SubscriptionBaseApiException, LockFailedException, EventBusException {
         final UUID accountId = account.getId();
 
         final BillingEventSet events = new MockBillingEventSet();
@@ -126,7 +128,7 @@ public class TestInvoiceDispatcher extends InvoiceTestSuiteWithEmbeddedDB {
     }
 
     @Test(groups = "slow")
-    public void testWithParking() throws InvoiceApiException, AccountApiException, CatalogApiException, SubscriptionBaseApiException, TagDefinitionApiException {
+    public void testWithParking() throws InvoiceApiException, AccountApiException, CatalogApiException, SubscriptionBaseApiException, TagDefinitionApiException, LockFailedException, EventBusException {
         final UUID accountId = account.getId();
 
         final BillingEventSet events = new MockBillingEventSet();

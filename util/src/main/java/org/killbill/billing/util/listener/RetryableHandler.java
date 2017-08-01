@@ -24,18 +24,25 @@ import org.killbill.billing.callcontext.InternalCallContext;
 import org.killbill.billing.util.callcontext.CallOrigin;
 import org.killbill.billing.util.callcontext.InternalCallContextFactory;
 import org.killbill.billing.util.callcontext.UserType;
+import org.killbill.clock.Clock;
 import org.killbill.notificationq.api.NotificationEvent;
 import org.killbill.notificationq.api.NotificationQueueService.NotificationQueueHandler;
+import org.killbill.queue.api.QueueEvent;
 
 public class RetryableHandler implements NotificationQueueHandler {
 
+    protected final Clock clock;
+
     private final RetryableService retryableService;
-    private final NotificationQueueHandler handlerDelegate;
     private final InternalCallContextFactory internalCallContextFactory;
 
-    public RetryableHandler(final RetryableService retryableService,
+    private final NotificationQueueHandler handlerDelegate;
+
+    public RetryableHandler(final Clock clock,
+                            final RetryableService retryableService,
                             final NotificationQueueHandler handlerDelegate,
                             final InternalCallContextFactory internalCallContextFactory) {
+        this.clock = clock;
         this.retryableService = retryableService;
         this.handlerDelegate = handlerDelegate;
         this.internalCallContextFactory = internalCallContextFactory;
@@ -53,7 +60,7 @@ public class RetryableHandler implements NotificationQueueHandler {
         }
     }
 
-    private void scheduleRetry(final NotificationEvent notificationEvent, final DateTime eventDateTime, final UUID userToken, final Long searchKey1, final Long searchKey2, final Throwable e) {
+    private void scheduleRetry(final QueueEvent notificationEvent, final DateTime eventDateTime, final UUID userToken, final Long searchKey1, final Long searchKey2, final Throwable e) {
         // Let the retry queue handle the exception
         final InternalCallContext internalCallContext = internalCallContextFactory.createInternalCallContext(searchKey2,
                                                                                                              searchKey1,

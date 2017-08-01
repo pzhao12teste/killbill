@@ -36,6 +36,7 @@ import org.killbill.notificationq.api.NotificationQueueService;
 import org.killbill.notificationq.api.NotificationQueueService.NoSuchNotificationQueue;
 import org.killbill.notificationq.api.NotificationQueueService.NotificationQueueAlreadyExists;
 import org.killbill.notificationq.api.NotificationQueueService.NotificationQueueHandler;
+import org.killbill.queue.api.QueueEvent;
 import org.skife.config.TimeSpan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +62,10 @@ public abstract class RetryableService {
     }
 
     public void initialize(final NotificationQueue originalQueue, final NotificationQueueHandler originalQueueHandler) {
+        initialize(originalQueue.getQueueName(), originalQueueHandler);
+    }
+
+    public void initialize(final String queueName, final NotificationQueueHandler originalQueueHandler) {
         try {
             final NotificationQueueHandler notificationQueueHandler = new NotificationQueueHandler() {
 
@@ -106,7 +111,7 @@ public abstract class RetryableService {
             };
 
             this.retryNotificationQueue = notificationQueueService.createNotificationQueue(RETRYABLE_SERVICE_NAME,
-                                                                                           originalQueue.getQueueName(),
+                                                                                           queueName,
                                                                                            notificationQueueHandler);
         } catch (final NotificationQueueAlreadyExists notificationQueueAlreadyExists) {
             throw new RuntimeException(notificationQueueAlreadyExists);
@@ -126,18 +131,18 @@ public abstract class RetryableService {
 
     // Called by the original handler (RetryableHandler)
     protected void scheduleRetry(final Throwable exception,
-                                 final NotificationEvent originalNotificationEvent,
+                                 final QueueEvent originalNotificationEvent,
                                  final DateTime originalEventDateTime,
                                  final InternalCallContext context) {
         if (exception.getCause() instanceof BillingExceptionBase) {
             scheduleRetry((BillingExceptionBase) exception.getCause(), originalNotificationEvent, originalEventDateTime, context);
         } else {
-            scheduleRetry(exception.getCause(), originalNotificationEvent, originalEventDateTime, context, 1);
+            scheduleRetry(exception.getCause() != null ? exception.getCause() : exception, originalNotificationEvent, originalEventDateTime, context, 1);
         }
     }
 
     private void scheduleRetry(final BillingExceptionBase exception,
-                               final NotificationEvent originalNotificationEvent,
+                               final QueueEvent originalNotificationEvent,
                                final DateTime originalEventDateTime,
                                final InternalCallContext context) {
         // Ignore if ErrorCode is populated ("expected" core handling error like ENT_ALREADY_BLOCKED or plugin error like ENT_PLUGIN_API_ABORTED), except for UNEXPECTED_ERROR
@@ -149,7 +154,7 @@ public abstract class RetryableService {
     }
 
     private void scheduleRetry(final Throwable exception,
-                               final NotificationEvent originalNotificationEvent,
+                               final QueueEvent originalNotificationEvent,
                                final DateTime originalEffectiveDate,
                                final InternalCallContext context,
                                final int retryNb) {

@@ -27,6 +27,7 @@ import org.killbill.billing.util.callcontext.InternalCallContextFactory;
 import org.killbill.billing.util.listener.RetryException;
 import org.killbill.billing.util.listener.RetryableHandler;
 import org.killbill.billing.util.listener.RetryableService;
+import org.killbill.clock.Clock;
 import org.killbill.notificationq.api.NotificationEvent;
 import org.killbill.notificationq.api.NotificationQueue;
 import org.killbill.notificationq.api.NotificationQueueService;
@@ -44,6 +45,7 @@ public class ParentInvoiceCommitmentNotifier extends RetryableService implements
 
     private static final Logger log = LoggerFactory.getLogger(ParentInvoiceCommitmentNotifier.class);
 
+    private final Clock clock;
     private final NotificationQueueService notificationQueueService;
     private final InvoiceListener listener;
     private final InternalCallContextFactory internalCallContextFactory;
@@ -51,10 +53,12 @@ public class ParentInvoiceCommitmentNotifier extends RetryableService implements
     private NotificationQueue commitInvoiceQueue;
 
     @Inject
-    public ParentInvoiceCommitmentNotifier(final NotificationQueueService notificationQueueService,
+    public ParentInvoiceCommitmentNotifier(final Clock clock,
+                                           final NotificationQueueService notificationQueueService,
                                            final InvoiceListener listener,
                                            final InternalCallContextFactory internalCallContextFactory) {
         super(notificationQueueService, internalCallContextFactory);
+        this.clock = clock;
         this.notificationQueueService = notificationQueueService;
         this.listener = listener;
         this.internalCallContextFactory = internalCallContextFactory;
@@ -82,7 +86,7 @@ public class ParentInvoiceCommitmentNotifier extends RetryableService implements
             }
         };
 
-        final NotificationQueueHandler retryableHandler = new RetryableHandler(this, notificationQueueHandler, internalCallContextFactory);
+        final NotificationQueueHandler retryableHandler = new RetryableHandler(clock, this, notificationQueueHandler, internalCallContextFactory);
         commitInvoiceQueue = notificationQueueService.createNotificationQueue(DefaultInvoiceService.INVOICE_SERVICE_NAME,
                                                                               PARENT_INVOICE_COMMITMENT_NOTIFIER_QUEUE,
                                                                               retryableHandler);

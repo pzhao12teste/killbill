@@ -49,6 +49,7 @@ import org.killbill.billing.util.listener.RetryableService;
 import org.killbill.bus.api.BusEvent;
 import org.killbill.bus.api.PersistentBus;
 import org.killbill.bus.api.PersistentBus.EventBusException;
+import org.killbill.clock.Clock;
 import org.killbill.notificationq.api.NotificationEvent;
 import org.killbill.notificationq.api.NotificationQueue;
 import org.killbill.notificationq.api.NotificationQueueService;
@@ -67,6 +68,7 @@ public class DefaultEntitlementService extends RetryableService implements Entit
 
     private static final Logger log = LoggerFactory.getLogger(DefaultEntitlementService.class);
 
+    private final Clock clock;
     private final EntitlementInternalApi entitlementInternalApi;
     private final BlockingStateDao blockingStateDao;
     private final PersistentBus eventBus;
@@ -77,13 +79,15 @@ public class DefaultEntitlementService extends RetryableService implements Entit
     private NotificationQueue entitlementEventQueue;
 
     @Inject
-    public DefaultEntitlementService(final EntitlementInternalApi entitlementInternalApi,
+    public DefaultEntitlementService(final Clock clock,
+                                     final EntitlementInternalApi entitlementInternalApi,
                                      final BlockingStateDao blockingStateDao,
                                      final PersistentBus eventBus,
                                      final NotificationQueueService notificationQueueService,
                                      final EntitlementUtils entitlementUtils,
                                      final InternalCallContextFactory internalCallContextFactory) {
         super(notificationQueueService, internalCallContextFactory);
+        this.clock = clock;
         this.entitlementInternalApi = entitlementInternalApi;
         this.blockingStateDao = blockingStateDao;
         this.eventBus = eventBus;
@@ -126,7 +130,7 @@ public class DefaultEntitlementService extends RetryableService implements Entit
         };
 
         try {
-            final NotificationQueueHandler retryableHandler = new RetryableHandler(this, queueHandler, internalCallContextFactory);
+            final NotificationQueueHandler retryableHandler = new RetryableHandler(clock, this, queueHandler, internalCallContextFactory);
             entitlementEventQueue = notificationQueueService.createNotificationQueue(ENTITLEMENT_SERVICE_NAME,
                                                                                      NOTIFICATION_QUEUE_NAME,
                                                                                      retryableHandler);
