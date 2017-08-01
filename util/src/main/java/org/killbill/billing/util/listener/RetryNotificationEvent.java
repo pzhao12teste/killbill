@@ -88,7 +88,7 @@ public class RetryNotificationEvent implements NotificationEvent {
         if (originalEventClass != null ? !originalEventClass.equals(that.originalEventClass) : that.originalEventClass != null) {
             return false;
         }
-        return originalEffectiveDate != null ? originalEffectiveDate.equals(that.originalEffectiveDate) : that.originalEffectiveDate == null;
+        return originalEffectiveDate != null ? originalEffectiveDate.compareTo(that.originalEffectiveDate) == 0 : that.originalEffectiveDate == null;
     }
 
     @Override
