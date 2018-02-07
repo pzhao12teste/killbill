@@ -1,37 +1,53 @@
-language: java
-
-sudo: false
+before_cache:
+- rm -rf $HOME/CACHE; find $TRAVIS_BUILD_DIR -name .ekstazi | while read line; do
+  du -sh $line;         DIR=$(dirname $HOME/CACHE$line); mkdir -p $DIR; cp -r $line
+  $DIR; done
+- echo CACHESIZE $(du -sk $HOME/CACHE)
+- cp /tmp/classpathFile $HOME/CACHE/classpathFile
+before_install:
+- if [ "$TRAVIS_OS_NAME" == "osx" ];        then sed -i '' 's/<gib.enabled>true/<gib.enabled>false/'
+  $TRAVIS_BUILD_DIR/pom.xml;        else sed -i 's/<gib.enabled>true/<gib.enabled>false/'
+  $TRAVIS_BUILD_DIR/pom.xml;        fi
+- find $HOME/CACHE -name .ekstazi | while read line; do du -sh $line;         DIR=$(dirname
+  ${line#$HOME/CACHE}); if [[ -d ${DIR#.ekstazi/} ]]; then cp -r $line $DIR; fi; done
+- grep -q -z '<artifactId>killbill-oss-parent</artifactId>[[:space:]]\+<groupId>org.kill-bill.billing</groupId>[[:space:]]\+<version>[0-9\.]*-SNAPSHOT</version>'
+  pom.xml && echo "killbill-oss-parent SNAPSHOT has been found, exiting." && exit
+  0 || true
+- echo "<settings><profiles><profile><repositories><repository><id>central</id><name>bintray</name><url>http://jcenter.bintray.com</url></repository></repositories><id>bintray</id></profile></profiles><activeProfiles><activeProfile>bintray</activeProfile></activeProfiles></settings>"
+  > /var/tmp/settings.xml
+- "function keep_alive() {\n  while true; do\n    echo -en \"\\a\"\n    sleep 5\n\
+  \  done\n}\nkeep_alive &\n"
+before_script:
+- find $TRAVIS_BUILD_DIR -name .ekstazi | while read line; do rm -rf $line; done
+- find $HOME/CACHE -name .ekstazi | while read line; do du -sh $line;         DIR=$(dirname
+  ${line#$HOME/CACHE}); if [[ -d ${DIR#.ekstazi/} ]]; then cp -r $line $DIR; fi; done
+- jdk_switcher use $JDK
+- if [ "$TRAVIS_OS_NAME" == "osx" ];    then sed -i '' 's/<gib.enabled>false/<gib.enabled>true/'
+  $TRAVIS_BUILD_DIR/pom.xml;    else sed -i 's/<gib.enabled>false/<gib.enabled>true/'
+  $TRAVIS_BUILD_DIR/pom.xml;    fi
+- if [[ -e $HOME/CACHE/classpathFile ]]; then cp $HOME/CACHE/classpathFile /tmp/;
+  fi
 cache:
   directories:
-      - $HOME/.m2
-
+  - $HOME/.m2
+  - $HOME/CACHE
 dist: trusty
-
-before_install:
-  - grep -q -z '<artifactId>killbill-oss-parent</artifactId>[[:space:]]\+<groupId>org.kill-bill.billing</groupId>[[:space:]]\+<version>[0-9\.]*-SNAPSHOT</version>' pom.xml && echo "killbill-oss-parent SNAPSHOT has been found, exiting." && exit 0 || true
-  - echo "<settings><profiles><profile><repositories><repository><id>central</id><name>bintray</name><url>http://jcenter.bintray.com</url></repository></repositories><id>bintray</id></profile></profiles><activeProfiles><activeProfile>bintray</activeProfile></activeProfiles></settings>" > /var/tmp/settings.xml
-  - |
-    function keep_alive() {
-      while true; do
-        echo -en "\a"
-        sleep 5
-      done
-    }
-    keep_alive &
-
-before_script:
-  - jdk_switcher use $JDK
-
-script: mvn -q -Djava.security.egd=file:/dev/./urandom -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN -Dorg.slf4j.simpleLogger.log.org.killbill.billing.util.cache=ERROR -Dorg.slf4j.simpleLogger.log.org.killbill.billing.lifecycle=ERROR -Dlogback.configurationFile=$PWD/profiles/killbill/src/test/resources/logback.travis.xml clean install $PHASE -pl '!beatrix,!profiles,!profiles/killbill,!profiles/killpay'
 install: mvn -q -U install -DskipTests=true --settings /var/tmp/settings.xml
-
-notifications:
-  email:
-    - kill-bill-commits@googlegroups.com
-
+language: java
 matrix:
-  include:
-    - env: PHASE="-Ptravis,jdk18" JDK=openjdk8
-    - env: PHASE="-Pmysql,jdk18" JDK=openjdk8
-    - env: PHASE="-Ppostgresql,jdk18" JDK=openjdk8
   fast_finish: true
+  include:
+  - env: PHASE="-Ptravis,jdk18" JDK=openjdk8
+  - env: PHASE="-Pmysql,jdk18" JDK=openjdk8
+  - env: PHASE="-Ppostgresql,jdk18" JDK=openjdk8
+script:
+- touch /tmp/NOW
+- echo GIBSTUDYSTART $(date)
+- mvn -q -Djava.security.egd=file:/dev/./urandom -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN
+  -Dorg.slf4j.simpleLogger.log.org.killbill.billing.util.cache=ERROR -Dorg.slf4j.simpleLogger.log.org.killbill.billing.lifecycle=ERROR
+  -Dlogback.configurationFile=$PWD/profiles/killbill/src/test/resources/logback.travis.xml
+  clean install $PHASE -pl '!beatrix,!profiles,!profiles/killbill,!profiles/killpay'
+- echo GIBSTUDYEND $(date)
+- cd $TRAVIS_BUILD_DIR
+- echo TESTNUM $(find . -name TEST-*.xml -newer /tmp/NOW | wc -l)
+sudo: false

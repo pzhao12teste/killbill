@@ -1,7 +1,7 @@
 /*
  * Copyright 2010-2013 Ning, Inc.
- * Copyright 2014-2018 Groupon, Inc
- * Copyright 2014-2018 The Billing Project, LLC
+ * Copyright 2014-2015 Groupon, Inc
+ * Copyright 2014-2015 The Billing Project, LLC
  *
  * The Billing Project licenses this file to you under the Apache License, version 2.0
  * (the "License"); you may not use this file except in compliance with the
@@ -18,7 +18,6 @@
 
 package org.killbill.billing.jaxrs.resources;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
@@ -336,13 +335,8 @@ public abstract class JaxRsResourceBase implements JaxrsResource {
                     generator.close();
                 } finally {
                     // In case the client goes away (IOException), make sure to close the underlying DB connection
-                    if (entities instanceof Closeable) {
-                        ((Closeable) entities).close();
-                    } else {
-                        // TODO 0.20.x (https://github.com/killbill/killbill/issues/558)
-                        while (iterator.hasNext()) {
-                            iterator.next();
-                        }
+                    while (iterator.hasNext()) {
+                        iterator.next();
                     }
                 }
             }
