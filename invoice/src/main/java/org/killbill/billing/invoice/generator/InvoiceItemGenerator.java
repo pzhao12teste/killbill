@@ -48,7 +48,6 @@ public abstract class InvoiceItemGenerator {
         private final UUID accountId;
         private final String type;
         private final Logger delegate;
-        private final boolean enabled;
 
         private StringBuilder logStringBuilder = null;
 
@@ -57,18 +56,17 @@ public abstract class InvoiceItemGenerator {
             this.accountId = accountId;
             this.type = type;
             this.delegate = delegate;
-            this.enabled = delegate.isDebugEnabled();
         }
 
         public void append(final Object event, final Collection<InvoiceItem> items) {
-            if (!enabled || items.isEmpty()) {
+            if (items.isEmpty()) {
                 return;
             }
             append(event, items.toArray(new InvoiceItem[items.size()]));
         }
 
         public void append(final Object event, final InvoiceItem... items) {
-            if (!enabled || items.length == 0) {
+            if (items.length == 0) {
                 return;
             }
 
@@ -82,8 +80,8 @@ public abstract class InvoiceItemGenerator {
         }
 
         public void logItems() {
-            if (enabled && logStringBuilder != null) {
-                delegate.debug(getLogStringBuilder().toString());
+            if (logStringBuilder != null) {
+                delegate.info(getLogStringBuilder().toString());
             }
         }
 

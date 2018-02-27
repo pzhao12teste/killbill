@@ -1,9 +1,7 @@
 /*
  * Copyright 2010-2013 Ning, Inc.
- * Copyright 2014-2018 Groupon, Inc
- * Copyright 2014-2018 The Billing Project, LLC
  *
- * The Billing Project licenses this file to you under the Apache License, version 2.0
+ * Ning licenses this file to you under the Apache License, version 2.0
  * (the "License"); you may not use this file except in compliance with the
  * License.  You may obtain a copy of the License at:
  *
@@ -18,8 +16,6 @@
 
 package org.killbill.billing.util.entity;
 
-import java.io.Closeable;
-import java.io.IOException;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -29,7 +25,7 @@ import javax.annotation.Nullable;
 import com.google.common.collect.ImmutableList;
 
 // Assumes the original offset starts at zero.
-public class DefaultPagination<T> implements Pagination<T>, Closeable {
+public class DefaultPagination<T> implements Pagination<T> {
 
     private final Long currentOffset;
     private final Long limit;
@@ -76,18 +72,6 @@ public class DefaultPagination<T> implements Pagination<T>, Closeable {
         this.totalNbRecords = totalNbRecords;
         this.maxNbRecords = maxNbRecords;
         this.delegateIterator = delegateIterator;
-    }
-
-    @Override
-    public void close() throws IOException {
-        if (delegateIterator instanceof Closeable) {
-            // Always the case with the current implementation (delegateIterator is a org.skife.jdbi.v2.ResultIterator)
-            ((Closeable) delegateIterator).close();
-        } else {
-            while (delegateIterator.hasNext()) {
-                delegateIterator.next();
-            }
-        }
     }
 
     @Override

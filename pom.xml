@@ -20,10 +20,10 @@
     <parent>
         <artifactId>killbill-oss-parent</artifactId>
         <groupId>org.kill-bill.billing</groupId>
-        <version>0.140.53</version>
+        <version>0.140.46</version>
     </parent>
     <artifactId>killbill</artifactId>
-    <version>0.18.18-SNAPSHOT</version>
+    <version>0.18.15-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>killbill</name>
     <description>Library for managing recurring subscriptions and the associated billing</description>
@@ -68,7 +68,7 @@
             <extension>
                 <groupId>edu.illinois</groupId>
                 <artifactId>incremental-builder-with-ekstazi</artifactId>
-                <version>3.5.4</version>
+                <version>3.5.5</version>
             </extension>
         </extensions>
     </build>
